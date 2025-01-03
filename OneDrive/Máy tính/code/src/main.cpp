@@ -1,5 +1,3 @@
-// Robot Movement
-
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -8,108 +6,95 @@
 
 using namespace std;
 
+// Interface IGridManager to manage Grid
+class IGridManager { 
+public: 
+    virtual bool checkGrid() = 0;
+    virtual int setDimension(int n) = 0; 
+    virtual int moveTo(int x, int y) = 0; 
+    virtual int lineTo(int x, int y) = 0; 
+    virtual void printGrid() = 0; 
+    virtual ~IGridManager() = default;
+};
 
 /*--------- Manage Grid-------------//
+*   bool checkGrid(): Check size Grid.
 *   int setDimension(int n): Define the grid size n.
 *   int moveTo(int x, int y): Robot moves to (x, y) without drawing.
 *   int lineTo(int x, int y): Move from current position to (x, y) with drawing on the grid.
 *   void printGrid(): print grid.
 *   void drawLine(): draw line moved.
 ------------------------------------*/
-class Grid
+class Grid : public IGridManager
 {
 public:
     // Constructor
     Grid() : dimension(0), currentX(0), currentY(0) {}
-    bool checkGrid()
-    {
-        bool check = false;
-        if(dimension <= 0)
-        {
-            cerr << "Incorrect format for size of grid."<<endl;
-            check = false;
-        }
-        else check = true;
 
-        return check; 
-    }
-    // Define the grid size n
-    int setDimension(int n)
+    bool checkGrid() override
     {
-        int status = 0;
+        return dimension > 0;
+    }
+
+    // Define the grid size n
+    int setDimension(int n) override
+    {
         if(n <= 0)
         {
-            cerr << "Incorrect format for size of grid DIMENSION command."<<endl;
-            status = -1;
+            cerr << "Incorrect format for size of grid DIMENSION command." << endl;
+            return -1;
         }
-        else
-        {
-            dimension = n;
-            grid.resize(n, vector<char>(n, '.'));
-            status = 0;
-        }
-        return status;
+        
+        dimension = n;
+        grid.resize(n, vector<char>(n, '.'));
+        return 0;
     }
 
-    //Robot moves to (x, y) without drawing.
-    int moveTo(int x, int y)
+    // Robot moves to (x, y) without drawing.
+    int moveTo(int x, int y) override
     {
         if(!checkGrid())
         {
+            cerr << "Grid size not set properly." << endl;
             return -1;
         }
-        int status = 0;
+
         if (x >= 0 && x < dimension && y >= 0 && y < dimension)
         {
             currentX = x;
             currentY = y;
             grid[currentY][currentX] = 'x';
-            status = 0;
+            return 0;
         }
-        else if(x > dimension || y > dimension )
-        {
-            cerr << "Err: Position MOVE_TO > size grid."<<endl;
-            status = -1;
-        }
-        else
-        {
-            cerr << "Err: Position MOVE_TO < 0."<<endl;
-            status = -1;
-        }
-        return status;
+        
+        cerr << (x > dimension || y > dimension ? "Err: Position MOVE_TO > size grid." : "Err: Position MOVE_TO < 0.") << endl;
+        return -1;
     }
 
-    //Move from current position to (x, y) with drawing on the grid.
-    int lineTo(int x, int y)
+    // Move from current position to (x, y) with drawing on the grid.
+    int lineTo(int x, int y) override
     {
         if(!checkGrid())
         {
+            cerr << "Grid size not set properly." << endl;
             return -1;
         }
-        int status = 0;
+
         if (x >= 0 && x < dimension && y >= 0 && y < dimension)
         {
             drawLine(currentX, currentY, x, y);
             currentX = x;
             currentY = y;
             grid[currentY][currentX] = 'x';
-            status = 0;
+            return 0;
         }
-        else if(x > dimension || y > dimension )
-        {
-            cerr << "Err: Position LINE_TO > size grid."<<endl;
-            status = -1;
-        }
-        else
-        {
-            cerr << "Err: Position LINE_TO < 0."<<endl;
-            status = -1;
-        }
-        return status;
+        
+        cerr << (x > dimension || y > dimension ? "Err: Position LINE_TO > size grid." : "Err: Position LINE_TO < 0.") << endl;
+        return -1;
     }
 
     // Print grid
-    void printGrid()
+    void printGrid() override
     {
         for (int i = 0; i < dimension; ++i)
         {
@@ -121,11 +106,7 @@ public:
 
             for (int j = 0; j < dimension; ++j)
             {
-                if(grid[i][j] == 'x')
-                {
-                    cout << "| x ";
-                }
-                else cout << "|   ";
+                cout << (grid[i][j] == 'x' ? "| x " : "|   ");
             }
             cout << "|" << endl;
         }
@@ -160,99 +141,114 @@ private:
     }
 };
 
-
-/*--------- Manage Command-------------//
-*   int executeCommand(const string &command): execute command from txt file
-*   void printGrid(): print grid
-------------------------------------*/
-class CommandExecutor : public Grid
+// Interface ICommandExecutor to manage Command
+class ICommandExecutor 
 {
-public:
-    CommandExecutor() {}
-    //Execute command from txt file
-    int executeCommand(const string &command)
+public: 
+    virtual int executeCommand(const string& command) = 0; 
+    virtual void printGrid() = 0; 
+    virtual ~ICommandExecutor() = default; 
+}; 
+
+class CommandExecutor : public ICommandExecutor 
+{
+public: 
+    CommandExecutor(IGridManager* gridManager) : gridManager(gridManager) {}
+
+    int executeCommand(const string& command) override
     {
         istringstream iss(command);
         string cmd;
         iss >> cmd;
-        int status = 0;
 
-        // Command DIMENSION
         if (cmd == "DIMENSION")
         {
-            int n;
-            iss >> n;
-            status = grid.setDimension(n);
-            if(status < 0)
-            {
-                cerr << "Incorrect format for DIMENSION command."<<endl;
-            }
-        }
-
-        // Command MOVE_TO
+            return executeDimension(iss);
+        } 
         else if (cmd == "MOVE_TO")
         {
-            int x, y;
-            char comma;
-            iss >> x >> comma >> y;
-            if(comma == ',')
-            {
-                status = grid.moveTo(x, y);
-                if(status < 0)
-                {
-                    cerr << "Incorrect format for MOVE_TO command."<<endl;
-                }
-            }
-            else
-            {
-                cerr << "Incorrect format for MOVE_TO command."<<endl;
-            }
+            return executeMoveTo(iss);
         }
-
-        // Command LINE_TO
         else if (cmd == "LINE_TO")
         {
-            int x, y;
-            char comma;
-            iss >> x >> comma >> y;
-            if(comma == ',')
-            {
-                status = grid.lineTo(x, y);
-                if(status < 0)
-                {
-                    cerr << "Incorrect format for LINE_TO command."<<endl;
-                }
-            }
-            else
-            {
-                cerr << "Incorrect format for LINE_TO command."<<endl;
-            }
-           
+            return executeLineTo(iss);
         }
         else
         {
-            cerr << "Unknown command: " << cmd << endl;
+            cerr << "Undefined Command: " << cmd << endl;
+            return -1;
         }
-        return status;
     }
 
-    // Print grid
-    void printGrid()
-    {
-        grid.printGrid();
-    }
+    void printGrid() override 
+    { 
+        gridManager->printGrid(); 
+    } 
 
-private:
-    Grid grid;
+private: 
+    IGridManager* gridManager;
+
+    int executeDimension(istringstream& iss) 
+    { 
+        int n;
+        iss >> n; 
+        int status = gridManager->setDimension(n); 
+        if (status < 0) 
+        { 
+            cerr << "Incorrect format for DIMENSION command." << endl; 
+        } 
+        return status; 
+    } 
+
+    int executeMoveTo(istringstream& iss) 
+    { 
+        int x, y; 
+        char comma; 
+        iss >> x >> comma >> y;
+        if (comma == ',') 
+        { 
+            int status = gridManager->moveTo(x, y); 
+            if (status < 0) 
+            { 
+                cerr << "Incorrect format for MOVE_TO command." << endl; 
+            } 
+            return status; 
+        }
+        else 
+        { 
+            cerr << "Incorrect format for MOVE_TO command." << endl; 
+            return -1; 
+        } 
+    } 
+
+    int executeLineTo(istringstream& iss) 
+    { 
+        int x, y; 
+        char comma;
+        iss >> x >> comma >> y; 
+        if (comma == ',') 
+        { 
+            int status = gridManager->lineTo(x, y);
+            if (status < 0) 
+            { 
+                cerr << "Incorrect format for LINE_TO command." << endl; 
+            } 
+            return status; 
+        } 
+        else 
+        { 
+            cerr << "Incorrect format for LINE_TO command." << endl;
+            return -1; 
+        } 
+    } 
 };
 
 int main() {
-    
     int status = 0;
+    Grid grid;
+    CommandExecutor executor(&grid);
 
-    CommandExecutor executor;
-
-    // open file command
+    // Open file command
     std::string src = "C:\\Users\\vanga\\OneDrive\\Máy tính\\code\\commands.txt";
 
     ifstream file(src);
